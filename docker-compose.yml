@@ -1,0 +1,148 @@
+# MindLink 个人知识管理平台 Docker Compose 配置
+# 支持开发和生产环境，包含应用、PostgreSQL 数据库和 Redis 缓存服务
+
+version: '3.8'
+
+services:
+  # 主应用服务
+  app:
+    build:
+      context: .
+      target: ${BUILD_TARGET:-production}  # 支持多阶段构建
+    container_name: mindlink-app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://mindlink_user:mindlink_password@db:5432/mindlink_db}
+      - REDIS_URL=${REDIS_URL:-redis://:redis_password@redis:6379}
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-here}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:8080}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      # 开发环境代码挂载
+      - ${CODE_VOLUME:-./app:/app/app}
+    networks:
+      - mindlink-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+
+  # PostgreSQL 数据库服务
+  db:
+    image: postgres:15-alpine
+    container_name: mindlink-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-mindlink_db}
+      - POSTGRES_USER=${POSTGRES_USER:-mindlink_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-mindlink_password}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    networks:
+      - mindlink-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mindlink_user} -d ${POSTGRES_DB:-mindlink_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+  # Redis 缓存服务
+  redis:
+    image: redis:7-alpine
+    container_name: mindlink-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_password} --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - mindlink-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "-a", "${REDIS_PASSWORD:-redis_password}", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+        reservations:
+          memory: 128M
+          cpus: '0.1'
+
+  # Nginx 反向代理服务（可选）
+  nginx:
+    image: nginx:alpine
+    container_name: mindlink-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - app
+    networks:
+      - mindlink-network
+    profiles:
+      - production  # 仅在生产环境启动
+
+volumes:
+  # PostgreSQL 数据持久化
+  postgres_data:
+    driver: local
+  
+  # Redis 数据持久化
+  redis_data:
+    driver: local
+
+networks:
+  # 自定义网络，用于服务间通信
+  mindlink-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# 环境变量文件
+env_file:
+  - .env
+
+# 开发环境覆盖配置
+# 使用: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up 

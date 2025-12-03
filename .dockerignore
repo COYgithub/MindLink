@@ -1,0 +1,26 @@
+# Windows 系统文件（避免打包到镜像）
+Thumbs.db
+.DS_Store
+*.log
+*.swp
+
+# Windows 换行符转换残留文件（若使用 git 管理）
+.gitattributes
+.gitignore
+
+# 前端 Windows 缓存
+frontend/node_modules/
+frontend/.vite/
+frontend/dist/
+
+# 后端 Windows 缓存
+__pycache__/
+*.pyc
+.venv/
+app/tests/test.py
+
+# Docker 构建无关文件
+.git/
+Dockerfile
+docker-compose.yml
+*.md

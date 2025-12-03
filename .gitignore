@@ -1,0 +1,13 @@
+.vscode/
+*.code-workspace
+
+
+node_modules/           # npm 依赖目录
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+upload/                 # 上传的文件目录
+mindlink.db             # 数据库文件
+env.example             # 环境变量示例文件
+.pytest_cache/          # pytest 缓存目录

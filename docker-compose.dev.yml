@@ -1,0 +1,55 @@
+# MindLink 开发环境 Docker Compose 覆盖配置
+# 使用: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+version: '3.8'
+
+services:
+  # 开发环境应用服务配置
+  app:
+    build:
+      target: development  # 使用开发阶段构建
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=DEBUG
+      - DATABASE_URL=postgresql://mindlink_user:mindlink_password@db:5432/mindlink_db_dev
+    volumes:
+      # 开发环境代码挂载，支持热重载
+      - ./app:/app/app
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
+
+  # 开发环境数据库配置
+  db:
+    environment:
+      - POSTGRES_DB=mindlink_db_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+
+  # 开发环境 Redis 配置
+  redis:
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass redis_password --maxmemory 128mb --maxmemory-policy allkeys-lru
+
+  # 开发环境不启动 Nginx
+  nginx:
+    profiles: ["never"]
+
+volumes:
+  # 开发环境数据库数据卷
+  postgres_dev_data:
+    driver: local 
